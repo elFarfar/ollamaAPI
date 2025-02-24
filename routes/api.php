@@ -10,12 +10,9 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::get('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
-
-// Define only ONE chat route (choose the correct controller)
 Route::post('/chat', [ChatbotController::class, 'chat'])->middleware('auth:sanctum');
-
 Route::post('/test', function (Request $request) {
     $data = $request->test;
 
@@ -32,7 +29,7 @@ Route::get('/getRouteTest', function (Request $request) {
 
         return response()->json(['Message' => "Hello from API"]);
     } catch (\Exception $e) {
-        return response()->json(['message' => "Internal Server Error"], 500);
+        return response()->json(['Message' => "Internal Server Error"], 500);
     }
 });
 
