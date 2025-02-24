@@ -4,71 +4,49 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str; // Add this line
 use App\Models\ChatHistory;
-use Ramsey\Uuid\Uuid;
 
 class ChatbotController extends Controller
 {
     public function chat(Request $request)
     {
-        // Validate input
         $request->validate([
             'message' => 'required|string',
-            'session_id' => 'nullable|string'
         ]);
 
-        $user = Auth::user(); // Get authenticated user (if any)
-        $session_id = $request->session_id;
 
-        if ($user && !$session_id) {
-            // If the user is authenticated but no session_id exists, generate a new one
-            $session_id = (string) Uuid::uuid4();
-        }
+        $user = $request->user();
 
-        // Fetch previous messages for session (if session_id exists)
-        $previousMessages = [];
-        if ($user && $session_id) {
-            $previousMessages = ChatHistory::where('user_id', $user->id)
-                ->where('session_id', $session_id)
-                ->orderBy('created_at', 'asc')
-                ->get()
-                ->map(fn($chat) => [
-                    ['role' => 'user', 'content' => $chat->user_message],
-                    ['role' => 'assistant', 'content' => $chat->bot_response],
-                ])
-                ->flatten(1)
-                ->toArray();
-        }
+        // Save the user's message in the chat_histories table
+        $session_id = (string) Str::uuid(); // Generate a new session ID if needed
 
-        // Add current message
-        $messages = array_merge($previousMessages, [
-            ['role' => 'user', 'content' => $request->message]
+        ChatHistory::create([
+            'user_id' => $user->id,
+            'session_id' => $session_id,
+            'user_message' => $request->message,
+            'bot_response' => '',  
         ]);
 
-        // Call the LLM API
-        $response = Http::post('http://localhost:11434/api/chat', [
+
+        $response = Http::post('http://localhost:11434/api/generate', [
             'model' => 'mistral',
-            'messages' => $messages,
+            'prompt' => $request->message,
             'stream' => false,
         ]);
 
-        $data = $response->json();
-        $botResponse = $data['message'] ?? 'No response from AI';
+        // Get the bot's response
+        $bot_response = data_get($response->json(), 'response', 'No response from LLM');
 
-        // Save message history
-        if ($user) {
-            ChatHistory::create([
-                'user_id' => $user->id,
-                'session_id' => $session_id,
-                'user_message' => $request->message,
-                'bot_response' => $botResponse,
-            ]);
-        }
 
+        ChatHistory::where('user_id', $user->id)
+            ->where('session_id', $session_id)
+            ->update(['bot_response' => $bot_response]);
+
+        // Return the LLM's response
         return response()->json([
+            'message' => $bot_response,
             'session_id' => $session_id,
-            'response' => $botResponse,
         ]);
     }
 }
